@@ -3,3 +3,5 @@ opencv-python
 numpy
 python-can
 h5py
+pyrealsense2
+PyYAML

@@ -1,27 +1,27 @@
 # OpenArm Bimanual Data Collector
 
-## 🏫 기관 정보
-- **KONKUK univ RVLAB 연구실**
-- **제작자**: 이병현 (Lee Byeong-hyeon)
-- **이메일**: [leebh3023@gmail.com](mailto:leebh3023@gmail.com)
+## 🏫 Institution Information
+- **KONKUK Univ. RVLAB**
+- **Author**: Lee Byeong-hyeon
+- **Email**: [leebh3023@gmail.com](mailto:leebh3023@gmail.com)
 
-## 📝 프로젝트 개요
-이 프로젝트는 OpenArm Bimanual 로봇의 실시간 관제 및 학습 데이터 수집을 위한 전용 GUI 시스템입니다. 
-- **실시간 모니터링**: 듀얼 암 관절 상태 및 다중 카메라 스트리밍 지원
-- **데이터 저장**: VLA 모델(ACT, Diffusion Policy 등) 학습에 최적화된 **HDF5(.h5)** 형식 저장 (관절 상태 + 영상 데이터 통합)
-- **안정적 제어**: CAN 통신 기반의 독립된 고성능 제어 루프
+## 📝 Project Overview
+This project is a dedicated GUI system for real-time control and training data collection of the OpenArm Bimanual robot.
+- **Real-time Monitoring**: Supports dual-arm joint state monitoring and multi-camera streaming.
+- **Data Logging**: Saves data in **HDF5 (.h5)** format, optimized for training VLA models (ACT, Diffusion Policy, etc.), integrating joint states and image data.
+- **Stable Control**: Independent, high-performance control loop based on CAN communication.
 
-## 🚀 실행 방법
+## 🚀 How to Run
 
-### 1. 사전 준비
-로컬 시스템 환경 오염을 방지하기 위해 가상 환경 사용을 강력히 권장합니다.
+### 1. Prerequisites
+Using a virtual environment is strongly recommended to prevent polluting the local system environment.
 
-### 2. GUI 실행 (자동화)
-제공된 `start_gui.sh` 스크립트를 실행하면 가상 환경 생성부터 의존성 설치, 프로그램 실행까지 자동으로 진행됩니다.
+### 2. Running the GUI (Automated)
+Execute the provided `start_gui.sh` script to automatically handle virtual environment creation, dependency installation, and program launch.
 ```bash
 cd openarm_gui
 ./start_gui.sh
 ```
 
-### 3. 상세 가이드
-더 자세한 기술 스펙 및 사용법은 [doc/Walkthrough.md](openarm_gui/doc/Walkthrough.md) 파일을 참고해 주세요.
+### 3. Detailed Guide
+For more detailed technical specifications and usage, please refer to [doc/Walkthrough.md](openarm_gui/doc/Walkthrough.md).

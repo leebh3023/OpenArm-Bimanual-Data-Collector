@@ -19,7 +19,5 @@ Thumbs.db
 .idea/
 
 # Exclude existing components
-libfranka_control/
-ui_server/
-ui/
 librealsense/
+ros2_ws/

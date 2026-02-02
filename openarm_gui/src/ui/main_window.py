@@ -236,8 +236,8 @@ class OpenArmMainWindow(QMainWindow):
             self.zero_btn.setEnabled(False) # 비활성화
             self.statusBar().showMessage("Disconnected")
 
-        self.connection_widget.connection_changed.emit(False)
-        self.connection_widget.gripper_changed.emit(False)  # 그리퍼 제어 비활성화
+        # self.connection_widget.connection_changed.emit(False)
+        # self.connection_widget.gripper_changed.emit(False)
     
     def _on_zero_clicked(self):
         # 영점 이동 시작

@@ -144,6 +144,18 @@ class OpenArmMainWindow(QMainWindow):
         self.zero_btn.setEnabled(False) # 연결 전에는 비활성
         control_layout.addWidget(self.zero_btn)
         
+        # FreeDrive 토글 버튼
+        self.freedrive_btn = QPushButton("TOGGLE FREEDRIVE")
+        self.freedrive_btn.setFixedHeight(40)
+        self.freedrive_btn.setCheckable(True) # 토글 가능
+        self.freedrive_btn.setStyleSheet("""
+            QPushButton { background-color: #2196F3; color: white; font-weight: bold; }
+            QPushButton:checked { background-color: #1976D2; border: 2px solid #BBDEFB; }
+        """)
+        self.freedrive_btn.clicked.connect(self._on_freedrive_toggled)
+        self.freedrive_btn.setEnabled(False)
+        control_layout.addWidget(self.freedrive_btn)
+        
         control_layout.addSpacing(20)
         
         # 데이터 수집 위젯
@@ -228,23 +240,49 @@ class OpenArmMainWindow(QMainWindow):
                 self.conn_btn.setText("DISCONNECT")
                 self.conn_btn.setStyleSheet("background-color: #f44336; color: white;")
                 self.zero_btn.setEnabled(True) # 연결됨 -> 활성화
+                self.freedrive_btn.setEnabled(True)
+                # 기본적으로 FreeDrive 상태로 시작 (checked=True)
+                self.freedrive_btn.setChecked(True)
+                self.controller.enable_freedrive('left')
+                self.controller.enable_freedrive('right')
                 self.statusBar().showMessage("Connected via CAN")
         else:
             self.controller.stop()
             self.conn_btn.setText("CONNECT ROBOT")
             self.conn_btn.setStyleSheet("background-color: #4CAF50; color: white;")
             self.zero_btn.setEnabled(False) # 비활성화
+            self.freedrive_btn.setEnabled(False)
+            self.freedrive_btn.setChecked(False)
             self.statusBar().showMessage("Disconnected")
 
         # self.connection_widget.connection_changed.emit(False)
         # self.connection_widget.gripper_changed.emit(False)
     
+    def _on_freedrive_toggled(self, checked):
+        if checked:
+            # ON: Enable FreeDrive (Passive)
+            self.controller.enable_freedrive('left')
+            self.controller.enable_freedrive('right')
+            self.statusBar().showMessage("FreeDrive Mode Enabled (Passive)")
+        else:
+            # OFF: Enable Active Control (Hold Current Position)
+            state = self.controller.get_robot_state()
+            self.controller.set_target_joints('left', state['left']['joints'])
+            self.controller.set_target_joints('right', state['right']['joints'])
+            self.statusBar().showMessage("FreeDrive Mode Disabled (Holding Position)")
+    
     def _on_zero_clicked(self):
         # 영점 이동 시작
         self.zero_btn.setEnabled(False)
         self.conn_btn.setEnabled(False)
+        self.freedrive_btn.setEnabled(False) # 이동 중 FreeDrive 금지
         self.collection_widget.setEnabled(False)
         self.replay_widget.setEnabled(False)
+        
+        # FreeDrive 끄고 Active 모드로 전환 (명령을 따라가야 하므로)
+        if self.freedrive_btn.isChecked():
+            self.freedrive_btn.setChecked(False)
+            # Active 모드 전환은 _send_command에서 자동 처리됨 (set_target_joints 호출 시)
         
         self.zero_thread = GoToZeroThread(self.controller.get_robot_state)
         self.zero_thread.update_joints_signal.connect(self._send_command)
@@ -260,6 +298,11 @@ class OpenArmMainWindow(QMainWindow):
         # 종료 후 버튼 복구
         self.zero_btn.setEnabled(True)
         self.conn_btn.setEnabled(True)
+        self.freedrive_btn.setEnabled(True)
+        
+        # 이동 완료 후에는 Active 상태 유지 (Hold)
+        self.freedrive_btn.setChecked(False)
+        
         self.collection_widget.setEnabled(True)
         self.replay_widget.setEnabled(True)
         self.statusBar().showMessage("Ready")

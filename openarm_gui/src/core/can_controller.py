@@ -329,27 +329,39 @@ class OpenArmCANController:
                 self.robot_state['right']['joints'] += np.random.normal(0, 0.001, 7)
 
     def _send_mit_commands(self):
-        """각 모터에 MIT 제어 명령 송신 (Zero gain for safe monitoring)"""
+        """각 모터에 MIT 제어 명령 송신"""
         for arm, bus in self.buses.items():
             if bus is None:
                 continue
-                
+            
+            # Check if active control is enabled for this arm
+            target_joints = self.commands.get(arm)
+            is_active = (target_joints is not None)
+
             for i in range(7):
                 motor_id = i + 1
                 m_type_idx = self.motor_configs[arm].get(motor_id, 0)
                 params = self.LIMIT_PARAM[m_type_idx]
                 p_max, v_max, t_max = params[0], params[1], params[2]
 
-                # MONITORING MODE: KP=0, KD=0.5 (Soft Damping), Target=Current or 0
-                # 안전을 위해 Kp=0으로 설정하여 현재 상태만 읽어옴 (Passive)
-                # 약간의 Damping(Kd)을 주어 저항감을 생성할 수 있으나, 0.0으로 설정 시 완전 Free
-                kp = 0.0
-                kd = 0.1 # Slight damping to prevent free fall if gravity comp not active? 
-                         # Actually safe to set 0 if we assume motors handle gravity or are already held.
-                         # Let's set minimal damping.
-                q_des = 0.0
-                dq_des = 0.0
-                tau_ff = 0.0
+                if is_active:
+                    # Active Control (Hold Position)
+                    # Kp=40.0: Sufficient stiffness to hold posture
+                    # Kd=1.5: Damping to prevent oscillation
+                    kp = 40.0
+                    kd = 1.5
+                    q_des = target_joints[i]
+                    dq_des = 0.0
+                    tau_ff = 0.0
+                else:
+                    # FreeDrive (Passive) Mode
+                    # Kp=0.0: No stiffness (Compliance)
+                    # Kd=0.1: Minimal damping for stability
+                    kp = 0.0
+                    kd = 0.1
+                    q_des = 0.0
+                    dq_des = 0.0
+                    tau_ff = 0.0
 
                 kp_int = self.float_to_uint(kp, 0, 500, 12)
                 kd_int = self.float_to_uint(kd, 0, 5, 12)
@@ -372,13 +384,18 @@ class OpenArmCANController:
                     arbitration_id=motor_id,
                     data=data,
                     is_extended_id=False,
-                    is_fd=True, # DM motors heavily rely on efficient frames, but standard works too. Code said fd=True.
+                    is_fd=True,
                     bitrate_switch=True
                 )
                 try:
                     bus.send(msg)
                 except can.CanError:
                     pass
+
+    def enable_freedrive(self, arm: str):
+        """특정 팔을 FreeDrive(Passive) 모드로 전환"""
+        with self._lock:
+            self.commands[arm] = None
 
     def _receive_states(self):
         """로봇 팔로부터 CAN 데이터를 수신하여 내부 상태 업데이트"""

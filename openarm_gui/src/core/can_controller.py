@@ -92,6 +92,17 @@ class OpenArmCANController:
 
         self.logger = None # 메인 앱에서 로거 주입 가능
 
+    def _is_interface_up(self, interface: str) -> bool:
+        """Check if network interface is UP via sysfs"""
+        try:
+            with open(f"/sys/class/net/{interface}/operstate", "r") as f:
+                state = f.read().strip()
+            # 'up' or 'unknown' (sometimes virtual/can interfaces show unknown but are up)
+            # 'down' is clearly down.
+            return state in ["up", "unknown"]
+        except Exception:
+            return False
+
     def connect(self) -> bool:
         """CAN 버스들에 접속합니다."""
         if can is None:
@@ -111,14 +122,28 @@ class OpenArmCANController:
                     "-d", str(self.dbitrate)
                 ]
                 print(f"Configuring {channel}...")
-                subprocess.run(cmd, capture_output=True, text=True, input="", timeout=2)
+                result = subprocess.run(cmd, capture_output=True, text=True, input="", timeout=2)
+                
+                if result.returncode != 0:
+                    print(f"Warning: Configuration command failed with return code {result.returncode}")
+                    print(f"Stderr: {result.stderr.strip()}")
+                    print("Note: This might be due to missing sudo permissions. If the interface is already up, connection may still succeed.")
+                else:
+                    print(f"Configuration command executed successfully.")
+                    
             except subprocess.TimeoutExpired:
                 print(f"Configuration command timed out (Sudo required?). Proceeding to connect...")
             except Exception as e:
                 print(f"Configuration command failed: {e}")
 
+            # 2. 인터페이스 상태 확인 (물리적/논리적 상태)
+            if not self._is_interface_up(channel):
+                print(f"Error: Interface {channel} is DOWN. Skipping connection for {arm} arm.")
+                self.buses[arm] = None
+                continue
+
             try:
-                # 2. SocketCAN 접속
+                # 3. SocketCAN 접속
                 bus = can.interface.Bus(
                     channel=channel, 
                     bustype='socketcan', 
@@ -265,11 +290,26 @@ class OpenArmCANController:
         while self._running:
             start_time = time.time()
             
-            # 메시지 처리 (Non-blocking)
-            self._process_can_messages()
-            
-            # 명령 송신 (Request/Response 방식이므로 데이터를 받으려면 계속 보내야 함)
-            self._send_mit_commands()
+            try:
+                # 메시지 처리 (Non-blocking)
+                self._process_can_messages()
+                
+                # 명령 송신 (Request/Response 방식이므로 데이터를 받으려면 계속 보내야 함)
+                self._send_mit_commands()
+            except OSError as e:
+                if e.errno == 100: # Network is down
+                     print(f"CRITICAL ERROR: CAN Network is DOWN. Stopping control loop. ({e})")
+                     # 안전을 위해 루프 중단
+                     # self._running = False
+                     # break
+                     # 혹은 재연결 시도 로직을 넣을 수 있으나, 여기서는 에러 로그만 남기고 
+                     # 시뮬레이션 모드처럼 동작하거나 잠시 대기
+                     time.sleep(1.0)
+                else:
+                     print(f"OSError in control loop: {e}")
+            except Exception as e:
+                print(f"Error in control loop: {e}")
+                # CanOperationError 등도 여기서 잡힘
             
             elapsed = time.time() - start_time
             sleep_time = max(0, rate - elapsed)
@@ -295,6 +335,12 @@ class OpenArmCANController:
                         break
                     
                     motor_id = msg.arbitration_id
+                    
+                    # Handle Response ID offset (Motor ID + 0x10)
+                    # Master ID response range: 0x11 ~ 0x17 -> 0x01 ~ 0x07
+                    if 0x11 <= motor_id <= 0x17:
+                        motor_id -= 0x10
+                        
                     # Motor ID range 1~7 (Ignore Gripper ID 8 for now)
                     if 1 <= motor_id <= 7:
                         joint_idx = motor_id - 1

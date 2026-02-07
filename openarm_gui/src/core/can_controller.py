@@ -72,25 +72,58 @@ class OpenArmCANController:
             'right': np.zeros(7)
         }
         
-        # Motor Configuration (Arm side -> ID -> Type Index)
-        # Type 6: DM8009 (J1, J2)
-        # Type 3: DM4340_48V (Left J3, J4)
-        # Type 2: DM4340 (Right J3, J4)
-        # Type 0: DM4310 (J5, J6, J7)
-        self.motor_configs = {
-            'left': {
-                1: 6, 2: 6,       # J1, J2
-                3: 2, 4: 2,       # J3, J4 (Standard)
-                5: 0, 6: 0, 7: 0  # J5, J6, J7
-            },
-            'right': {
-                1: 6, 2: 6,       # J1, J2
-                3: 2, 4: 2,       # J3, J4 (Standard)
-                5: 0, 6: 0, 7: 0  # J5, J6, J7
+        # Motor Configuration loaded from config
+        self.motor_configs = self._load_motor_config()
+        if not self.motor_configs:
+            # Fallback if config load fails (or empty)
+            self.motor_configs = {
+                'left': {
+                    1: 6, 2: 6,       # J1, J2 (DM8009)
+                    3: 2, 4: 2,       # J3, J4 (DM4340)
+                    5: 0, 6: 0, 7: 0  # J5, J6, J7 (DM4310)
+                },
+                'right': {
+                    1: 6, 2: 6,
+                    3: 2, 4: 2,
+                    5: 0, 6: 0, 7: 0
+                }
             }
-        }
+        
+        # Control Gains loaded from config
+        self.control_gains = self._load_control_gains()
+        if not self.control_gains:
+            self.control_gains = {
+                'active': {'kp': 40.0, 'kd': 1.5},
+                'passive': {'kp': 0.0, 'kd': 0.1}
+            }
 
         self.logger = None # 메인 앱에서 로거 주입 가능
+
+    def _load_motor_config(self):
+        """Load motor configuration from yaml"""
+        import yaml
+        import os
+        try:
+            config_path = os.path.join(os.path.dirname(__file__), "..", "..", "config", "config.yaml")
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+                return config.get('motors', {})
+        except Exception as e:
+            print(f"Failed to load motor config: {e}")
+            return {}
+
+    def _load_control_gains(self):
+        """Load control gains from yaml"""
+        import yaml
+        import os
+        try:
+            config_path = os.path.join(os.path.dirname(__file__), "..", "..", "config", "config.yaml")
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+                return config.get('control', {})
+        except Exception as e:
+            print(f"Failed to load control gains: {e}")
+            return {}
 
     def _is_interface_up(self, interface: str) -> bool:
         """Check if network interface is UP via sysfs"""
@@ -392,10 +425,8 @@ class OpenArmCANController:
 
                 if is_active:
                     # Active Control (Hold Position)
-                    # Kp=40.0: Sufficient stiffness to hold posture
-                    # Kd=1.5: Damping to prevent oscillation
-                    kp = 40.0
-                    kd = 1.5
+                    kp = self.control_gains['active']['kp']
+                    kd = self.control_gains['active']['kd']
                     q_des = target_joints[i]
                     dq_des = 0.0
                     tau_ff = 0.0
@@ -403,8 +434,8 @@ class OpenArmCANController:
                     # FreeDrive (Passive) Mode
                     # Kp=0.0: No stiffness (Compliance)
                     # Kd=0.1: Minimal damping for stability
-                    kp = 0.0
-                    kd = 0.1
+                    kp = self.control_gains['passive']['kp']
+                    kd = self.control_gains['passive']['kd']
                     q_des = 0.0
                     dq_des = 0.0
                     tau_ff = 0.0

@@ -18,6 +18,7 @@ class CollectionWidget(QWidget):
         task_layout = QHBoxLayout()
         task_layout.addWidget(QLabel("Task Name:"))
         self.task_input = QLineEdit("task_001")
+        self.task_input.setStyleSheet("color: white; background-color: #333333; border: 1px solid #555; border-radius: 4px; padding: 4px;")
         task_layout.addWidget(self.task_input)
         layout.addLayout(task_layout)
 

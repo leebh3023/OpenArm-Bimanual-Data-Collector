@@ -2,10 +2,6 @@ import sys
 import os
 os.environ["OPENCV_LOG_LEVEL"] = "SILENT"
 import time
-import sys
-import os
-os.environ["OPENCV_LOG_LEVEL"] = "SILENT"
-import time
 import h5py
 import cv2
 import yaml
@@ -25,8 +21,6 @@ except ImportError:
     # 직접 실행 시를 위한 경로 추가
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
     from src.core.can_controller import OpenArmCANController
-    from src.widgets.camera_widget import StreamingWidget
-    from src.widgets.collection_widget import CollectionWidget
     from src.widgets.camera_widget import StreamingWidget
     from src.widgets.collection_widget import CollectionWidget
     from src.widgets.replay_widget import ReplayWidget
@@ -132,8 +126,6 @@ class OpenArmMainWindow(QMainWindow):
         self.conn_btn = QPushButton("CONNECT ROBOT")
         self.conn_btn.setFixedHeight(50)
         self.conn_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
-        self.conn_btn.clicked.connect(self._on_connect_clicked)
-        self.conn_btn.clicked.connect(self._on_connect_clicked)
         control_layout.addWidget(self.conn_btn)
 
         # 영점 이동 버튼

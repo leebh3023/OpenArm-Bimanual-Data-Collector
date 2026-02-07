@@ -2,3 +2,29 @@ cameras:
   left_camera_serial: "017322074817"
   right_camera_serial: ""
   top_camera_serial: ""
+
+motors:
+  left:
+    1: 6   # DM8009
+    2: 6
+    3: 2   # DM4340
+    4: 2
+    5: 0   # DM4310
+    6: 0
+    7: 0
+  right:
+    1: 6   # DM8009
+    2: 6
+    3: 2   # DM4340
+    4: 2
+    5: 0   # DM4310
+    6: 0
+    7: 0
+
+control:
+  active:
+    kp: 40.0
+    kd: 1.5
+  passive:
+    kp: 0.0
+    kd: 0.1

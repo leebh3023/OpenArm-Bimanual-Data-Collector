@@ -5,3 +5,4 @@ python-can
 h5py
 pyrealsense2
 PyYAML
+rerun-sdk

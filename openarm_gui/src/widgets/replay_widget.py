@@ -40,6 +40,14 @@ class ReplayThread(QThread):
                     return
 
                 total_steps = len(l_q)
+                
+                # Check dimensions and pad if necessary (7-DOF -> 8-DOF)
+                if l_q.shape[1] == 7:
+                    # Pad with 0.0 (Gripper position)
+                    gripper_pad = np.zeros((total_steps, 1))
+                    l_q = np.hstack([l_q, gripper_pad]) 
+                    r_q = np.hstack([r_q, gripper_pad])
+                
                 target_l_0 = l_q[0]
                 target_r_0 = r_q[0]
 

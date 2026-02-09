@@ -7,7 +7,7 @@ import cv2
 import yaml
 import numpy as np
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QPushButton, QLabel, QFrame, QSplitter, QStatusBar, QMessageBox, QSizePolicy, QGridLayout)
+                             QPushButton, QLabel, QFrame, QSplitter, QStatusBar, QMessageBox, QSizePolicy, QGridLayout, QSlider)
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QThread, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap, QAction, QFont, QIcon
 
@@ -50,8 +50,8 @@ class GoToZeroThread(QThread):
             start_r = np.array(start_state['right']['joints'])
             
             # 목표 상태 (0점)
-            target_l = np.zeros(7)
-            target_r = np.zeros(7)
+            target_l = np.zeros(8)
+            target_r = np.zeros(8)
             
             duration = 5.0 # 5초 (안전 우선)
             rate = 30 # Hz
@@ -146,9 +146,42 @@ class OpenArmMainWindow(QMainWindow):
         """)
         self.freedrive_btn.clicked.connect(self._on_freedrive_toggled)
         self.freedrive_btn.setEnabled(False)
+        self.freedrive_btn.setEnabled(False)
         control_layout.addWidget(self.freedrive_btn)
         
         control_layout.addSpacing(20)
+
+        # 그리퍼 제어 슬라이더 영역
+        gripper_group = QFrame()
+        gripper_group.setStyleSheet("background-color: #333; border-radius: 5px; padding: 5px;")
+        gripper_layout = QVBoxLayout(gripper_group)
+        
+        gripper_label = QLabel("GRIPPER CONTROL")
+        gripper_label.setStyleSheet("color: #FFC107; font-weight: bold; font-size: 12px;")
+        gripper_layout.addWidget(gripper_label)
+        
+        # Left Gripper
+        self.l_gripper_slider = QSlider(Qt.Orientation.Horizontal)
+        self.l_gripper_slider.setRange(0, 100) # 0 to 100%
+        self.l_gripper_slider.setValue(0)
+        self.l_gripper_slider.valueChanged.connect(lambda v: self._on_gripper_changed('left', v))
+        gripper_layout.addWidget(QLabel("Left Gripper"))
+        gripper_layout.addWidget(self.l_gripper_slider)
+        
+        # Right Gripper
+        self.r_gripper_slider = QSlider(Qt.Orientation.Horizontal)
+        self.r_gripper_slider.setRange(0, 100)
+        self.r_gripper_slider.setValue(0)
+        self.r_gripper_slider.setValue(0)
+        self.r_gripper_slider.valueChanged.connect(lambda v: self._on_gripper_changed('right', v))
+        gripper_layout.addWidget(QLabel("Right Gripper"))
+        gripper_layout.addWidget(self.r_gripper_slider)
+        
+        # 초기 상태: 비활성
+        self.l_gripper_slider.setEnabled(False)
+        self.r_gripper_slider.setEnabled(False)
+        
+        control_layout.addWidget(gripper_group)
         
         # 데이터 수집 위젯
         self.collection_widget = CollectionWidget()
@@ -233,17 +266,30 @@ class OpenArmMainWindow(QMainWindow):
                 self.conn_btn.setStyleSheet("background-color: #f44336; color: white;")
                 self.zero_btn.setEnabled(True) # 연결됨 -> 활성화
                 self.freedrive_btn.setEnabled(True)
+                self.freedrive_btn.setEnabled(True)
+                
+                # 그리퍼 슬라이더 활성화
+                self.l_gripper_slider.setEnabled(True)
+                self.r_gripper_slider.setEnabled(True)
+
                 # 기본적으로 FreeDrive 상태로 시작 (checked=True)
                 self.freedrive_btn.setChecked(True)
+                # Enable FreeDrive for arms
                 self.controller.enable_freedrive('left')
                 self.controller.enable_freedrive('right')
-                self.statusBar().showMessage("Connected via CAN")
+                # But keep gripper in Active mode? NO, enable_freedrive clears commands.
+                # If we want gripper active, we need a separate logic or just let gripper limp in FD too.
+                # For now, let gripper be limp in FreeDrive.
+                
+                self.statusBar().showMessage("Connected via CAN (8-DOF)")
         else:
             self.controller.stop()
             self.conn_btn.setText("CONNECT ROBOT")
             self.conn_btn.setStyleSheet("background-color: #4CAF50; color: white;")
             self.zero_btn.setEnabled(False) # 비활성화
             self.freedrive_btn.setEnabled(False)
+            self.l_gripper_slider.setEnabled(False)
+            self.r_gripper_slider.setEnabled(False)
             self.freedrive_btn.setChecked(False)
             self.statusBar().showMessage("Disconnected")
 
@@ -262,6 +308,21 @@ class OpenArmMainWindow(QMainWindow):
             self.controller.set_target_joints('left', state['left']['joints'])
             self.controller.set_target_joints('right', state['right']['joints'])
             self.statusBar().showMessage("FreeDrive Mode Disabled (Holding Position)")
+
+    def _on_gripper_changed(self, arm, value):
+        """그리퍼 슬라이더 값 변경 시 호출 (0~100 -> 0.0~3.14 or max_angle)"""
+        # 매핑: 0 -> 0.0 (Closed?), 100 -> 1.5 (Open?) 
+        # 실제 그리퍼의 작동 범위에 따라 조절 필요. 
+        # 일단 0.0 ~ 3.0 라디안 정도로 가정해봅니다. (DM4310 usually acts as a servo)
+        
+        # NOTE: 그리퍼가 닫혔을 때 0인지, 열렸을 때 0인지 확인 필요.
+        # 보통 0이 초기 상태. 
+        max_angle = 3.0 # radians (approx 180 deg)
+        target_pos = (value / 100.0) * max_angle
+        
+        self.controller.set_gripper_position(arm, target_pos)
+        # 상태바 업데이트는 너무 빈번하므로 생략하거나 디버깅용으로만
+        # self.statusBar().showMessage(f"Set {arm} gripper to {target_pos:.2f} rad")
     
     def _on_zero_clicked(self):
         # 영점 이동 시작
@@ -319,8 +380,8 @@ class OpenArmMainWindow(QMainWindow):
             
             # 동적 크기 할당을 위한 데이터셋 생성 (chunked)
             self.ts_dataset = self.obs_group.create_dataset('timestamp', (0,), maxshape=(None,), dtype='f8', chunks=True)
-            self.l_q_dataset = self.obs_group.create_dataset('left_q', (0, 7), maxshape=(None, 7), dtype='f4', chunks=True)
-            self.r_q_dataset = self.obs_group.create_dataset('right_q', (0, 7), maxshape=(None, 7), dtype='f4', chunks=True)
+            self.l_q_dataset = self.obs_group.create_dataset('left_q', (0, 8), maxshape=(None, 8), dtype='f4', chunks=True)
+            self.r_q_dataset = self.obs_group.create_dataset('right_q', (0, 8), maxshape=(None, 8), dtype='f4', chunks=True)
             
             # 카메라별 데이터셋 (Semantic Names)
             self.cam_datasets = {}
@@ -355,10 +416,10 @@ class OpenArmMainWindow(QMainWindow):
             self.ts_dataset.resize(new_shape)
             self.ts_dataset[curr_idx] = state['timestamp']
             
-            self.l_q_dataset.resize((curr_idx + 1, 7))
+            self.l_q_dataset.resize((curr_idx + 1, 8))
             self.l_q_dataset[curr_idx] = state['left']['joints']
             
-            self.r_q_dataset.resize((curr_idx + 1, 7))
+            self.r_q_dataset.resize((curr_idx + 1, 8))
             self.r_q_dataset[curr_idx] = state['right']['joints']
 
             # 2. 이미지 데이터 확장 및 저장

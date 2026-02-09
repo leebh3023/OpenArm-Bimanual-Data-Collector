@@ -61,15 +61,15 @@ class OpenArmCANController:
         
         # 로봇 상태 데이터 (Thread-safe)
         self.robot_state = {
-            'left': {'joints': np.zeros(7), 'velocity': np.zeros(7), 'effort': np.zeros(7)},
-            'right': {'joints': np.zeros(7), 'velocity': np.zeros(7), 'effort': np.zeros(7)},
+            'left': {'joints': np.zeros(8), 'velocity': np.zeros(8), 'effort': np.zeros(8)},
+            'right': {'joints': np.zeros(8), 'velocity': np.zeros(8), 'effort': np.zeros(8)},
             'timestamp': 0.0
         }
         
         # 제어 명령 데이터
         self.commands = {
-            'left': np.zeros(7),
-            'right': np.zeros(7)
+            'left': np.zeros(8),
+            'right': np.zeros(8)
         }
         
         # Motor Configuration loaded from config
@@ -80,12 +80,14 @@ class OpenArmCANController:
                 'left': {
                     1: 6, 2: 6,       # J1, J2 (DM8009)
                     3: 2, 4: 2,       # J3, J4 (DM4340)
-                    5: 0, 6: 0, 7: 0  # J5, J6, J7 (DM4310)
+                    5: 0, 6: 0, 7: 0, # J5, J6, J7 (DM4310)
+                    8: 0              # Gripper (DM4310)
                 },
                 'right': {
                     1: 6, 2: 6,
                     3: 2, 4: 2,
-                    5: 0, 6: 0, 7: 0
+                    5: 0, 6: 0, 7: 0,
+                    8: 0
                 }
             }
         
@@ -94,7 +96,8 @@ class OpenArmCANController:
         if not self.control_gains:
             self.control_gains = {
                 'active': {'kp': 40.0, 'kd': 1.5},
-                'passive': {'kp': 0.0, 'kd': 0.1}
+                'passive': {'kp': 0.0, 'kd': 0.1},
+                'gripper': {'kp': 20.0, 'kd': 0.1}
             }
 
         self.logger = None # 메인 앱에서 로거 주입 가능
@@ -375,7 +378,7 @@ class OpenArmCANController:
                         motor_id -= 0x10
                         
                     # Motor ID range 1~7 (Ignore Gripper ID 8 for now)
-                    if 1 <= motor_id <= 7:
+                    if 1 <= motor_id <= 8:
                         joint_idx = motor_id - 1
                         data = msg.data
                         if len(data) >= 8:
@@ -402,10 +405,11 @@ class OpenArmCANController:
                             updated = True
         
         # If absolutely no connection, fallback to sim noise
+        # If absolutely no connection, fallback to sim noise
         if not any(self.buses.values()):
              with self._lock:
-                self.robot_state['left']['joints'] += np.random.normal(0, 0.001, 7)
-                self.robot_state['right']['joints'] += np.random.normal(0, 0.001, 7)
+                self.robot_state['left']['joints'] += np.random.normal(0, 0.001, 8)
+                self.robot_state['right']['joints'] += np.random.normal(0, 0.001, 8)
 
     def _send_mit_commands(self):
         """각 모터에 MIT 제어 명령 송신"""
@@ -417,28 +421,61 @@ class OpenArmCANController:
             target_joints = self.commands.get(arm)
             is_active = (target_joints is not None)
 
-            for i in range(7):
+            for i in range(8):
                 motor_id = i + 1
+                
+                # Check if motor config exists for this ID
+                if motor_id not in self.motor_configs[arm]:
+                    continue
+
                 m_type_idx = self.motor_configs[arm].get(motor_id, 0)
                 params = self.LIMIT_PARAM[m_type_idx]
                 p_max, v_max, t_max = params[0], params[1], params[2]
 
-                if is_active:
-                    # Active Control (Hold Position)
-                    kp = self.control_gains['active']['kp']
-                    kd = self.control_gains['active']['kd']
-                    q_des = target_joints[i]
+                # Gripper (ID 8) logic
+                if motor_id == 8:
+                    kp = self.control_gains['gripper']['kp']
+                    kd = self.control_gains['gripper']['kd']
+                    # Gripper target is always active if command is set
+                    # If no specific command, hold current position (or 0)
+                    # For now, use target_joints if available, else current state
+                    if is_active:
+                         q_des = target_joints[i]
+                    else:
+                         # In freedrive, gripper should probably stay where it is or go to 0?
+                         # Let's assume it holds 0 or last known position.
+                         # Better: Gripper is usually controlled explicitly.
+                         # If commands[arm] is None (FreeDrive), we might still want to hold gripper?
+                         # For simplicity, if FreeDrive, set gripper to 0 stiffness? No, gripper should hold object.
+                         # Let's use separate logic: Gripper always Active unless explicitly disabled.
+                         
+                         # But here commands[arm] is None means WHOLE ARM freedrive.
+                         # If we want to hold object during freedrive, we need to store gripper target separately.
+                         # Current impl: clear commands = FreeDrive.
+                         # So gripper will also be FreeDrive (limp).
+                         kp = 0.0
+                         kd = 0.1
+                         q_des = 0.0
+                    
                     dq_des = 0.0
                     tau_ff = 0.0
-                else:
-                    # FreeDrive (Passive) Mode
-                    # Kp=0.0: No stiffness (Compliance)
-                    # Kd=0.1: Minimal damping for stability
-                    kp = self.control_gains['passive']['kp']
-                    kd = self.control_gains['passive']['kd']
-                    q_des = 0.0
-                    dq_des = 0.0
-                    tau_ff = 0.0
+
+                # Arm Joints (ID 1-7) logic
+                else: 
+                    if is_active:
+                        # Active Control (Hold Position)
+                        kp = self.control_gains['active']['kp']
+                        kd = self.control_gains['active']['kd']
+                        q_des = target_joints[i]
+                        dq_des = 0.0
+                        tau_ff = 0.0
+                    else:
+                        # FreeDrive (Passive) Mode
+                        kp = self.control_gains['passive']['kp']
+                        kd = self.control_gains['passive']['kd']
+                        q_des = 0.0
+                        dq_des = 0.0
+                        tau_ff = 0.0
 
                 kp_int = self.float_to_uint(kp, 0, 500, 12)
                 kd_int = self.float_to_uint(kd, 0, 5, 12)
@@ -492,8 +529,34 @@ class OpenArmCANController:
             }
 
     def set_target_joints(self, arm: str, joints: np.ndarray):
-        """특정 팔의 목표 관절 각도를 설정 (Active Control 미구현 - 현재는 모니터링 전용)"""
-        # TODO: Active Control 구현 시 사용
+        """특정 팔의 목표 관절 각도를 설정"""
         if arm in self.commands:
             with self._lock:
-                self.commands[arm] = joints.copy()
+                # Ensure input is 8 elements (if user passes 7, append gripper state)
+                if len(joints) == 7:
+                    # Maintain current gripper state if only 7 joints provided
+                    current_gripper = self.commands[arm][7] # Index 7 = Motor ID 8
+                    new_cmd = np.append(joints, current_gripper)
+                elif len(joints) == 8:
+                    new_cmd = joints.copy()
+                else:
+                    print(f"Invalid joint command length: {len(joints)}")
+                    return
+                self.commands[arm] = new_cmd
+
+    def set_gripper_position(self, arm: str, position: float):
+        """Set gripper position (Motor ID 8)"""
+        # This allows controlling gripper even in FreeDrive mode?
+        # No, currently modifying self.commands which is cleared in FreeDrive.
+        # Ideally, gripper should be independent. But for now, let's stick to consolidated commands.
+        # If commands[arm] is None (FreeDrive), we can't set target.
+        # User needs to switch to Active to control gripper, OR we modify enable_freedrive.
+        
+        with self._lock:
+            if self.commands[arm] is not None:
+                self.commands[arm][7] = position
+            else:
+                # In FreeDrive mode. 
+                # If we want to move gripper, we might need a separate 'gripper_target' dict.
+                # For this iteration, let's assume gripper only works in Active mode.
+                pass

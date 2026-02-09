@@ -1,5 +1,5 @@
 cameras:
-  left_camera_serial: "017322074817"
+  left_camera_serial: ""
   right_camera_serial: ""
   top_camera_serial: ""
 
@@ -11,7 +11,8 @@ motors:
     4: 2
     5: 0   # DM4310
     6: 0
-    7: 0
+    7: 0  # J7 (DM4310)
+    8: 0  # Gripper (DM4310)
   right:
     1: 6   # DM8009
     2: 6
@@ -20,6 +21,7 @@ motors:
     5: 0   # DM4310
     6: 0
     7: 0
+    8: 0  # Gripper (DM4310)
 
 control:
   active:
@@ -28,3 +30,6 @@ control:
   passive:
     kp: 0.0
     kd: 0.1
+  gripper:
+    kp: 20.0  # Slightly softer than arm joints
+    kd: 0.1   # Minimal damping

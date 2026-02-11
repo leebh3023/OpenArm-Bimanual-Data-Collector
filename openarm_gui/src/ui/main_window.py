@@ -127,6 +127,7 @@ class OpenArmMainWindow(QMainWindow):
         self.conn_btn.setFixedHeight(50)
         self.conn_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
         control_layout.addWidget(self.conn_btn)
+        self.conn_btn.clicked.connect(self._on_connect_clicked)
 
         # 영점 이동 버튼
         self.zero_btn = QPushButton("GO TO ZERO")

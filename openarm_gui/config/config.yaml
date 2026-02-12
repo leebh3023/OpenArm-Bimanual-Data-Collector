@@ -1,7 +1,7 @@
 cameras:
   left_camera_serial: ""
   right_camera_serial: ""
-  top_camera_serial: ""
+  top_camera_serial: "017322074817"
 
 motors:
   left:
@@ -31,5 +31,5 @@ control:
     kp: 0.0
     kd: 0.1
   gripper:
-    kp: 20.0  # Slightly softer than arm joints
-    kd: 0.1   # Minimal damping
+    kp: 8.0  # Optimized for performance
+    kd: 0.2   # Increased damping for stability

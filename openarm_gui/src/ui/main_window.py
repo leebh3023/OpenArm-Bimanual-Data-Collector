@@ -162,25 +162,38 @@ class OpenArmMainWindow(QMainWindow):
         gripper_layout.addWidget(gripper_label)
         
         # Left Gripper
-        self.l_gripper_slider = QSlider(Qt.Orientation.Horizontal)
-        self.l_gripper_slider.setRange(0, 100) # 0 to 100%
-        self.l_gripper_slider.setValue(0)
-        self.l_gripper_slider.valueChanged.connect(lambda v: self._on_gripper_changed('left', v))
+        l_gripper_btn_layout = QHBoxLayout()
+        self.l_open_btn = QPushButton("OPEN")
+        self.l_close_btn = QPushButton("CLOSE")
+        self.l_open_btn.setStyleSheet("background-color: #555; color: white; font-weight: bold;")
+        self.l_close_btn.setStyleSheet("background-color: #555; color: white; font-weight: bold;")
+        self.l_open_btn.clicked.connect(lambda: self._on_gripper_btn_clicked('left', 'open'))
+        self.l_close_btn.clicked.connect(lambda: self._on_gripper_btn_clicked('left', 'close'))
+        l_gripper_btn_layout.addWidget(self.l_open_btn)
+        l_gripper_btn_layout.addWidget(self.l_close_btn)
+        
         gripper_layout.addWidget(QLabel("Left Gripper"))
-        gripper_layout.addWidget(self.l_gripper_slider)
+        gripper_layout.addLayout(l_gripper_btn_layout)
         
         # Right Gripper
-        self.r_gripper_slider = QSlider(Qt.Orientation.Horizontal)
-        self.r_gripper_slider.setRange(0, 100)
-        self.r_gripper_slider.setValue(0)
-        self.r_gripper_slider.setValue(0)
-        self.r_gripper_slider.valueChanged.connect(lambda v: self._on_gripper_changed('right', v))
+        r_gripper_btn_layout = QHBoxLayout()
+        self.r_open_btn = QPushButton("OPEN")
+        self.r_close_btn = QPushButton("CLOSE")
+        self.r_open_btn.setStyleSheet("background-color: #555; color: white; font-weight: bold;")
+        self.r_close_btn.setStyleSheet("background-color: #555; color: white; font-weight: bold;")
+        self.r_open_btn.clicked.connect(lambda: self._on_gripper_btn_clicked('right', 'open'))
+        self.r_close_btn.clicked.connect(lambda: self._on_gripper_btn_clicked('right', 'close'))
+        r_gripper_btn_layout.addWidget(self.r_open_btn)
+        r_gripper_btn_layout.addWidget(self.r_close_btn)
+        
         gripper_layout.addWidget(QLabel("Right Gripper"))
-        gripper_layout.addWidget(self.r_gripper_slider)
+        gripper_layout.addLayout(r_gripper_btn_layout)
         
         # 초기 상태: 비활성
-        self.l_gripper_slider.setEnabled(False)
-        self.r_gripper_slider.setEnabled(False)
+        self.l_open_btn.setEnabled(False)
+        self.l_close_btn.setEnabled(False)
+        self.r_open_btn.setEnabled(False)
+        self.r_close_btn.setEnabled(False)
         
         control_layout.addWidget(gripper_group)
         
@@ -269,9 +282,11 @@ class OpenArmMainWindow(QMainWindow):
                 self.freedrive_btn.setEnabled(True)
                 self.freedrive_btn.setEnabled(True)
                 
-                # 그리퍼 슬라이더 활성화
-                self.l_gripper_slider.setEnabled(True)
-                self.r_gripper_slider.setEnabled(True)
+                # 그리퍼 버튼 활성화
+                self.l_open_btn.setEnabled(True)
+                self.l_close_btn.setEnabled(True)
+                self.r_open_btn.setEnabled(True)
+                self.r_close_btn.setEnabled(True)
 
                 # 기본적으로 FreeDrive 상태로 시작 (checked=True)
                 self.freedrive_btn.setChecked(True)
@@ -289,8 +304,10 @@ class OpenArmMainWindow(QMainWindow):
             self.conn_btn.setStyleSheet("background-color: #4CAF50; color: white;")
             self.zero_btn.setEnabled(False) # 비활성화
             self.freedrive_btn.setEnabled(False)
-            self.l_gripper_slider.setEnabled(False)
-            self.r_gripper_slider.setEnabled(False)
+            self.l_open_btn.setEnabled(False)
+            self.l_close_btn.setEnabled(False)
+            self.r_open_btn.setEnabled(False)
+            self.r_close_btn.setEnabled(False)
             self.freedrive_btn.setChecked(False)
             self.statusBar().showMessage("Disconnected")
 
@@ -310,20 +327,15 @@ class OpenArmMainWindow(QMainWindow):
             self.controller.set_target_joints('right', state['right']['joints'])
             self.statusBar().showMessage("FreeDrive Mode Disabled (Holding Position)")
 
-    def _on_gripper_changed(self, arm, value):
-        """그리퍼 슬라이더 값 변경 시 호출 (0~100 -> 0.0~3.14 or max_angle)"""
-        # 매핑: 0 -> 0.0 (Closed?), 100 -> 1.5 (Open?) 
-        # 실제 그리퍼의 작동 범위에 따라 조절 필요. 
-        # 일단 0.0 ~ 3.0 라디안 정도로 가정해봅니다. (DM4310 usually acts as a servo)
-        
-        # NOTE: 그리퍼가 닫혔을 때 0인지, 열렸을 때 0인지 확인 필요.
-        # 보통 0이 초기 상태. 
-        max_angle = 3.0 # radians (approx 180 deg)
-        target_pos = (value / 100.0) * max_angle
-        
+    def _on_gripper_btn_clicked(self, arm, action):
+        """그리퍼 버튼 클릭 시 호출 (OPEN: -1.2 rad, CLOSE: 0.0 rad)"""
+        if action == 'open':
+            target_pos = -1.2
+        else:
+            target_pos = 0.0
+            
         self.controller.set_gripper_position(arm, target_pos)
-        # 상태바 업데이트는 너무 빈번하므로 생략하거나 디버깅용으로만
-        # self.statusBar().showMessage(f"Set {arm} gripper to {target_pos:.2f} rad")
+        self.statusBar().showMessage(f"Set {arm} gripper to {action} ({target_pos} rad)")
     
     def _on_zero_clicked(self):
         # 영점 이동 시작

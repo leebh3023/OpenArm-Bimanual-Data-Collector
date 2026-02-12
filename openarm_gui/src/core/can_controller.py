@@ -97,7 +97,7 @@ class OpenArmCANController:
             self.control_gains = {
                 'active': {'kp': 40.0, 'kd': 1.5},
                 'passive': {'kp': 0.0, 'kd': 0.1},
-                'gripper': {'kp': 20.0, 'kd': 0.1}
+                'gripper': {'kp': 16.0, 'kd': 0.2}
             }
 
         self.logger = None # 메인 앱에서 로거 주입 가능
@@ -158,7 +158,7 @@ class OpenArmCANController:
                     "-d", str(self.dbitrate)
                 ]
                 print(f"Configuring {channel}...")
-                result = subprocess.run(cmd, capture_output=True, text=True, input="", timeout=2)
+                result = subprocess.run(cmd, capture_output=True, text=True, input="", timeout=4)
                 
                 if result.returncode != 0:
                     print(f"Warning: Configuration command failed with return code {result.returncode}")
@@ -373,11 +373,11 @@ class OpenArmCANController:
                     motor_id = msg.arbitration_id
                     
                     # Handle Response ID offset (Motor ID + 0x10)
-                    # Master ID response range: 0x11 ~ 0x17 -> 0x01 ~ 0x07
-                    if 0x11 <= motor_id <= 0x17:
+                    # Master ID response range: 0x11 ~ 0x18 -> 0x01 ~ 0x08
+                    if 0x11 <= motor_id <= 0x18:
                         motor_id -= 0x10
                         
-                    # Motor ID range 1~7 (Ignore Gripper ID 8 for now)
+                    # Motor ID range 1~8
                     if 1 <= motor_id <= 8:
                         joint_idx = motor_id - 1
                         data = msg.data
@@ -560,3 +560,10 @@ class OpenArmCANController:
                 # If we want to move gripper, we might need a separate 'gripper_target' dict.
                 # For this iteration, let's assume gripper only works in Active mode.
                 pass
+
+    def zero_gripper(self, arm: str):
+        """특정 팔의 그리퍼(ID 8)를 현재 위치 기준으로 Zero 설정"""
+        bus = self.buses.get(arm)
+        if bus:
+            self.set_zero_position(bus, 8)
+            print(f"[{arm}] 그리퍼 Zero 설정 명령 전송 완료.")

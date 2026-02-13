@@ -97,8 +97,12 @@ class OpenArmCANController:
             self.control_gains = {
                 'active': {'kp': 40.0, 'kd': 1.5},
                 'passive': {'kp': 0.0, 'kd': 0.1},
-                'gripper': {'kp': 16.0, 'kd': 0.2}
+                'gripper': {'kp': 8.0, 'kd': 0.2}
             }
+
+        # 그리퍼 단위 변환 상수 (ROS v10_simple_hardware.cpp 기준)
+        self.GRIPPER_MAX_DISTANCE = 0.044  # Meters (0.0=Closed, 0.044=Open)
+        self.GRIPPER_MAX_RADIANS = -1.0472 # Radians
 
         self.logger = None # 메인 앱에서 로거 주입 가능
 
@@ -127,6 +131,18 @@ class OpenArmCANController:
         except Exception as e:
             print(f"Failed to load control gains: {e}")
             return {}
+
+    def joint_to_motor_radians(self, joint_value):
+        """Joint position (meters: 0~0.044) -> Motor radians (0~-1.0472) 변환"""
+        # Ensure joint_value is within valid range [0, GRIPPER_MAX_DISTANCE]
+        joint_value = np.clip(joint_value, 0.0, self.GRIPPER_MAX_DISTANCE)
+        return (joint_value / self.GRIPPER_MAX_DISTANCE) * self.GRIPPER_MAX_RADIANS
+
+    def motor_radians_to_joint(self, motor_radians):
+        """Motor radians (0~-1.0472) -> Joint position (meters: 0~0.044) 변환"""
+        # Ensure motor_radians is within valid range [GRIPPER_MAX_RADIANS, 0]
+        motor_radians = np.clip(motor_radians, self.GRIPPER_MAX_RADIANS, 0.0)
+        return self.GRIPPER_MAX_DISTANCE * (motor_radians / self.GRIPPER_MAX_RADIANS)
 
     def _is_interface_up(self, interface: str) -> bool:
         """Check if network interface is UP via sysfs"""
@@ -399,6 +415,10 @@ class OpenArmCANController:
                             dq = self.uint_to_float(dq_uint, -v_max, v_max, 12)
                             tau = self.uint_to_float(tau_uint, -t_max, t_max, 12)
 
+                            # Gripper (ID 8) conversion: Radians -> Meters
+                            if motor_id == 8:
+                                q = self.motor_radians_to_joint(q)
+
                             self.robot_state[arm]['joints'][joint_idx] = q
                             self.robot_state[arm]['velocity'][joint_idx] = dq
                             self.robot_state[arm]['effort'][joint_idx] = tau
@@ -411,100 +431,83 @@ class OpenArmCANController:
                 self.robot_state['left']['joints'] += np.random.normal(0, 0.001, 8)
                 self.robot_state['right']['joints'] += np.random.normal(0, 0.001, 8)
 
+    def send_mit_command(self, arm, motor_id, kp, kd, q_des, dq_des=0.0, tau_ff=0.0):
+        """
+        MIT 제어 명령을 단일 모터에 송신합니다.
+        """
+        bus = self.buses.get(arm)
+        if not bus:
+            return
+
+        m_type_idx = self.motor_configs[arm].get(motor_id, 0)
+        params = self.LIMIT_PARAM[m_type_idx]
+        p_max, v_max, t_max = params[0], params[1], params[2]
+
+        kp_int = self.float_to_uint(kp, 0, 500, 12)
+        kd_int = self.float_to_uint(kd, 0, 5, 12)
+        q_int = self.float_to_uint(q_des, -p_max, p_max, 16)
+        dq_int = self.float_to_uint(dq_des, -v_max, v_max, 12)
+        tau_int = self.float_to_uint(tau_ff, -t_max, t_max, 12)
+
+        data = [
+            (q_int >> 8) & 0xFF,
+            q_int & 0xFF,
+            dq_int >> 4,
+            ((dq_int & 0xF) << 4) | ((kp_int >> 8) & 0xF),
+            kp_int & 0xFF,
+            kd_int >> 4,
+            ((kd_int & 0xF) << 4) | ((tau_int >> 8) & 0xF),
+            tau_int & 0xFF
+        ]
+
+        msg = can.Message(
+            arbitration_id=motor_id,
+            data=data,
+            is_extended_id=False,
+            is_fd=True,
+            bitrate_switch=True
+        )
+        try:
+            bus.send(msg)
+        except can.CanError:
+            pass
+
     def _send_mit_commands(self):
         """각 모터에 MIT 제어 명령 송신"""
         for arm, bus in self.buses.items():
             if bus is None:
                 continue
             
-            # Check if active control is enabled for this arm
             target_joints = self.commands.get(arm)
             is_active = (target_joints is not None)
 
             for i in range(8):
                 motor_id = i + 1
-                
-                # Check if motor config exists for this ID
                 if motor_id not in self.motor_configs[arm]:
                     continue
 
-                m_type_idx = self.motor_configs[arm].get(motor_id, 0)
-                params = self.LIMIT_PARAM[m_type_idx]
-                p_max, v_max, t_max = params[0], params[1], params[2]
-
-                # Gripper (ID 8) logic
                 if motor_id == 8:
                     kp = self.control_gains['gripper']['kp']
                     kd = self.control_gains['gripper']['kd']
-                    # Gripper target is always active if command is set
-                    # If no specific command, hold current position (or 0)
-                    # For now, use target_joints if available, else current state
                     if is_active:
-                         q_des = target_joints[i]
+                        # target_joints[7] is in Meters
+                        q_des = self.joint_to_motor_radians(target_joints[i])
                     else:
-                         # In freedrive, gripper should probably stay where it is or go to 0?
-                         # Let's assume it holds 0 or last known position.
-                         # Better: Gripper is usually controlled explicitly.
-                         # If commands[arm] is None (FreeDrive), we might still want to hold gripper?
-                         # For simplicity, if FreeDrive, set gripper to 0 stiffness? No, gripper should hold object.
-                         # Let's use separate logic: Gripper always Active unless explicitly disabled.
-                         
-                         # But here commands[arm] is None means WHOLE ARM freedrive.
-                         # If we want to hold object during freedrive, we need to store gripper target separately.
-                         # Current impl: clear commands = FreeDrive.
-                         # So gripper will also be FreeDrive (limp).
-                         kp = 0.0
-                         kd = 0.1
-                         q_des = 0.0
-                    
-                    dq_des = 0.0
-                    tau_ff = 0.0
-
-                # Arm Joints (ID 1-7) logic
+                        # FreeDrive: Gripper is passive (limp)
+                        kp = 0.0
+                        kd = 0.1
+                        q_des = 0.0
                 else: 
                     if is_active:
-                        # Active Control (Hold Position)
                         kp = self.control_gains['active']['kp']
                         kd = self.control_gains['active']['kd']
                         q_des = target_joints[i]
-                        dq_des = 0.0
-                        tau_ff = 0.0
                     else:
-                        # FreeDrive (Passive) Mode
                         kp = self.control_gains['passive']['kp']
                         kd = self.control_gains['passive']['kd']
                         q_des = 0.0
-                        dq_des = 0.0
-                        tau_ff = 0.0
 
-                kp_int = self.float_to_uint(kp, 0, 500, 12)
-                kd_int = self.float_to_uint(kd, 0, 5, 12)
-                q_int = self.float_to_uint(q_des, -p_max, p_max, 16)
-                dq_int = self.float_to_uint(dq_des, -v_max, v_max, 12)
-                tau_int = self.float_to_uint(tau_ff, -t_max, t_max, 12)
-
-                data = [
-                    (q_int >> 8) & 0xFF,
-                    q_int & 0xFF,
-                    dq_int >> 4,
-                    ((dq_int & 0xF) << 4) | ((kp_int >> 8) & 0xF),
-                    kp_int & 0xFF,
-                    kd_int >> 4,
-                    ((kd_int & 0xF) << 4) | ((tau_int >> 8) & 0xF),
-                    tau_int & 0xFF
-                ]
-
-                msg = can.Message(
-                    arbitration_id=motor_id,
-                    data=data,
-                    is_extended_id=False,
-                    is_fd=True,
-                    bitrate_switch=True
-                )
-                try:
-                    bus.send(msg)
-                except can.CanError:
-                    pass
+                self.send_mit_command(arm, motor_id, kp, kd, q_des)
 
     def enable_freedrive(self, arm: str):
         """특정 팔을 FreeDrive(Passive) 모드로 전환"""
@@ -545,21 +548,11 @@ class OpenArmCANController:
                 self.commands[arm] = new_cmd
 
     def set_gripper_position(self, arm: str, position: float):
-        """Set gripper position (Motor ID 8)"""
-        # This allows controlling gripper even in FreeDrive mode?
-        # No, currently modifying self.commands which is cleared in FreeDrive.
-        # Ideally, gripper should be independent. But for now, let's stick to consolidated commands.
-        # If commands[arm] is None (FreeDrive), we can't set target.
-        # User needs to switch to Active to control gripper, OR we modify enable_freedrive.
-        
+        """그리퍼 제어 (Meters: 0.0=Closed, 0.044=Open)"""
         with self._lock:
             if self.commands[arm] is not None:
-                self.commands[arm][7] = position
-            else:
-                # In FreeDrive mode. 
-                # If we want to move gripper, we might need a separate 'gripper_target' dict.
-                # For this iteration, let's assume gripper only works in Active mode.
-                pass
+                # 0.0 ~ 0.044m 범위로 제한
+                self.commands[arm][7] = np.clip(position, 0.0, self.GRIPPER_MAX_DISTANCE)
 
     def zero_gripper(self, arm: str):
         """특정 팔의 그리퍼(ID 8)를 현재 위치 기준으로 Zero 설정"""

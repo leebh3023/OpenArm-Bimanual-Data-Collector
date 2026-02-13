@@ -71,6 +71,7 @@ class GoToZeroThread(QThread):
                     'left': curr_l,
                     'right': curr_r
                 })
+                
                 time.sleep(1.0 / rate)
                 
             if self._running:
@@ -328,14 +329,14 @@ class OpenArmMainWindow(QMainWindow):
             self.statusBar().showMessage("FreeDrive Mode Disabled (Holding Position)")
 
     def _on_gripper_btn_clicked(self, arm, action):
-        """그리퍼 버튼 클릭 시 호출 (OPEN: -1.2 rad, CLOSE: 0.0 rad)"""
+        """그리퍼 버튼 클릭 시 호출 (OPEN: 0.044m, CLOSE: 0.0m)"""
         if action == 'open':
-            target_pos = -1.2
+            target_pos = 0.044 # meters
         else:
             target_pos = 0.0
             
         self.controller.set_gripper_position(arm, target_pos)
-        self.statusBar().showMessage(f"Set {arm} gripper to {action} ({target_pos} rad)")
+        self.statusBar().showMessage(f"Set {arm} gripper to {action} ({target_pos} m)")
     
     def _on_zero_clicked(self):
         # 영점 이동 시작

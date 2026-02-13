@@ -1,7 +1,7 @@
 cameras:
-  left_camera_serial: ""
+  left_camera_serial: "017322074817"
   right_camera_serial: ""
-  top_camera_serial: "017322074817"
+  top_camera_serial: ""
 
 motors:
   left:
@@ -32,4 +32,4 @@ control:
     kd: 0.1
   gripper:
     kp: 8.0  # Optimized for performance
-    kd: 0.2   # Increased damping for stability
+    kd: 0.2   # Tuned for stability and response

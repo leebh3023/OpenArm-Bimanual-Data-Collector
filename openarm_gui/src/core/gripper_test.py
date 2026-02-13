@@ -42,9 +42,9 @@ def main():
     print(f"\n[3/3] 초기화 완료. 현재 대상: {target_arm} 암 그리퍼 (ID 8)")
     print(f"기본값: KP={current_kp}, KD={current_kd}, Target={target_pos}")
     print("\n명령어 안내:")
-    print("  p [val]  : 목표 위치 설정 (radians, 0.0=Close)")
-    print("  open     : 그리퍼 열기 (p -1.2)")
-    print("  close    : 그리퍼 닫기 (p 0)")
+    print("  p [val]  : 목표 위치 설정 (meters, 0.0=Close, 0.044=Open)")
+    print("  open     : 그리퍼 열기 (p 0.044)")
+    print("  close    : 그리퍼 닫기 (p 0.0)")
     print("  kp [val] : KP 값 변경")
     print("  kd [val] : KD 값 변경")
     print("  arm [l/r]: 테스트 대상 암 변경 (left/right)")
@@ -104,9 +104,9 @@ def main():
                     print("사용법: p [위치]")
 
             elif action == 'open':
-                target_pos = -1.2
+                target_pos = 0.044
                 controller.set_gripper_position(target_arm, target_pos)
-                print(f"그리퍼를 엽니다. (목표: {target_pos})")
+                print(f"그리퍼를 엽니다. (목표: {target_pos}m)")
 
             elif action == 'close':
                 target_pos = 0.0

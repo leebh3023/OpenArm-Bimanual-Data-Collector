@@ -13,7 +13,8 @@ if [ ! -f "${VENV_PYTHON}" ]; then
     exit 1
 fi
 
-# PYTHONPATH 설정 (프로젝트 루트 추가)
+# PATH 및 PYTHONPATH 설정 (가상 환경 bin 및 프로젝트 루트 추가)
+export PATH="${SCRIPT_DIR}/.venv/bin:${PATH}"
 export PYTHONPATH="${SCRIPT_DIR}:${PYTHONPATH:-}"
 
 # 인자로 받은 스크립트 실행

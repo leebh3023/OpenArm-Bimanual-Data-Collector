@@ -377,45 +377,37 @@ class OpenArmCANController:
             for arm, bus in self.buses.items():
                 if bus is None: 
                     # Sim noise for disconnected arm
-                    self.robot_state[arm]['joints'] += np.random.normal(0, 0.0001, 7)
+                    self.robot_state[arm]['joints'] += np.random.normal(0, 0.0001, 8)
                     continue
 
-                # Read all available messages
+                # Read all available messages (Non-blocking)
                 while True:
-                    msg = bus.recv(timeout=0) # Non-blocking
+                    msg = bus.recv(timeout=0)
                     if msg is None:
                         break
                     
                     motor_id = msg.arbitration_id
                     
                     # Handle Response ID offset (Motor ID + 0x10)
-                    # Master ID response range: 0x11 ~ 0x18 -> 0x01 ~ 0x08
                     if 0x11 <= motor_id <= 0x18:
                         motor_id -= 0x10
                         
-                    # Motor ID range 1~8
                     if 1 <= motor_id <= 8:
                         joint_idx = motor_id - 1
                         data = msg.data
                         if len(data) >= 8:
-                            # Decode Parameters based on Motor Type
                             m_type_idx = self.motor_configs[arm].get(motor_id, 0)
                             params = self.LIMIT_PARAM[m_type_idx]
                             p_max, v_max, t_max = params[0], params[1], params[2]
 
-                            # Decoding (DM_CAN.py logic)
-                            # data[1], data[2] -> Position
                             q_uint = (data[1] << 8) | data[2]
-                            # data[3], data[4] -> Velocity
                             dq_uint = (data[3] << 4) | (data[4] >> 4)
-                            # data[4], data[5] -> Torque
                             tau_uint = ((data[4] & 0xF) << 8) | data[5]
 
                             q = self.uint_to_float(q_uint, -p_max, p_max, 16)
                             dq = self.uint_to_float(dq_uint, -v_max, v_max, 12)
                             tau = self.uint_to_float(tau_uint, -t_max, t_max, 12)
 
-                            # Gripper (ID 8) conversion: Radians -> Meters
                             if motor_id == 8:
                                 q = self.motor_radians_to_joint(q)
 
@@ -423,13 +415,6 @@ class OpenArmCANController:
                             self.robot_state[arm]['velocity'][joint_idx] = dq
                             self.robot_state[arm]['effort'][joint_idx] = tau
                             updated = True
-        
-        # If absolutely no connection, fallback to sim noise
-        # If absolutely no connection, fallback to sim noise
-        if not any(self.buses.values()):
-             with self._lock:
-                self.robot_state['left']['joints'] += np.random.normal(0, 0.001, 8)
-                self.robot_state['right']['joints'] += np.random.normal(0, 0.001, 8)
 
     def send_mit_command(self, arm, motor_id, kp, kd, q_des, dq_des=0.0, tau_ff=0.0):
         """

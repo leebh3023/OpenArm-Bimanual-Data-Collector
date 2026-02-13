@@ -46,9 +46,9 @@ def visualize_openarm_data(h5_path):
 
     # Iterate through frames
     for i in range(num_frames):
-        # Set timeline
-        rr.set_time_seconds("stable_time", timestamps[i])
-        rr.set_time_sequence("frame_idx", i)
+        # Set timeline (Rerun 0.29.1+ API)
+        rr.set_time("stable_time", timestamp=timestamps[i])
+        rr.set_time("frame_idx", sequence=i)
 
         # 1. Joint States
         if 'left_q' in obs:
@@ -57,14 +57,14 @@ def visualize_openarm_data(h5_path):
             for j, val in enumerate(l_q):
                 label = f"left_joint_{j+1}"
                 if j == 7: label = "left_gripper"
-                rr.log(f"joints/left/{label}", rr.Scalar(val))
+                rr.log(f"joints/left/{label}", rr.Scalars(val))
 
         if 'right_q' in obs:
             r_q = obs['right_q'][i]
             for j, val in enumerate(r_q):
                 label = f"right_joint_{j+1}"
                 if j == 7: label = "right_gripper"
-                rr.log(f"joints/right/{label}", rr.Scalar(val))
+                rr.log(f"joints/right/{label}", rr.Scalars(val))
 
         # 2. Images
         if 'images' in obs:

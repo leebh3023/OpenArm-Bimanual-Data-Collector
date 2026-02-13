@@ -1,7 +1,7 @@
 cameras:
-  left_camera_serial: "017322074817"
+  left_camera_serial: ""
   right_camera_serial: ""
-  top_camera_serial: ""
+  top_camera_serial: "017322074817"
 
 motors:
   left:

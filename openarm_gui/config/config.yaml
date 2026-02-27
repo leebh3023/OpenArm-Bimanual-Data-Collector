@@ -1,6 +1,6 @@
 cameras:
   left_camera_serial: ""
-  right_camera_serial: ""
+  right_camera_serial: "231522072930"
   top_camera_serial: "017322074817"
 
 motors:
@@ -25,8 +25,8 @@ motors:
 
 control:
   active:
-    kp: 40.0
-    kd: 1.5
+    kp: [70.0, 70.0, 70.0, 60.0, 10.0, 10.0, 10.0]
+    kd: [2.75, 2.5, 2.0, 2.0, 0.7, 0.6, 0.5]
   passive:
     kp: 0.0
     kd: 0.1

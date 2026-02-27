@@ -174,7 +174,7 @@ class OpenArmCANController:
                     "-d", str(self.dbitrate)
                 ]
                 print(f"Configuring {channel}...")
-                result = subprocess.run(cmd, capture_output=True, text=True, input="", timeout=4)
+                result = subprocess.run(cmd, capture_output=True, text=True, input="", timeout=6)
                 
                 if result.returncode != 0:
                     print(f"Warning: Configuration command failed with return code {result.returncode}")
@@ -484,8 +484,20 @@ class OpenArmCANController:
                         q_des = 0.0
                 else: 
                     if is_active:
-                        kp = self.control_gains['active']['kp']
-                        kd = self.control_gains['active']['kd']
+                        kp_val = self.control_gains['active']['kp']
+                        kd_val = self.control_gains['active']['kd']
+                        
+                        # Handle individual joint gains (list) if provided
+                        if isinstance(kp_val, (list, np.ndarray)) and len(kp_val) >= 7:
+                            kp = kp_val[i] # i is 0-6 for Joint 1-7
+                        else:
+                            kp = kp_val
+                            
+                        if isinstance(kd_val, (list, np.ndarray)) and len(kd_val) >= 7:
+                            kd = kd_val[i]
+                        else:
+                            kd = kd_val
+                            
                         q_des = target_joints[i]
                     else:
                         kp = self.control_gains['passive']['kp']
